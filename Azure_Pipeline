@@ -1,0 +1,70 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: your_variable_group_name
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+    displayName: 'Build and Test'
+    steps:
+    - task: UseJavaVersion@0
+      inputs:
+        versionSpec: '11'
+        addToPath: true
+    - script: |
+        # Your Java build commands (Maven)
+        cd java_project_folder
+        ./mvnw clean install
+      displayName: 'Build Java App'
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '14.x'
+      displayName: 'Install Node.js'
+    - script: |
+        # Your React.js build commands (e.g., npm install and npm run build)
+        cd react_project_folder
+        npm install
+        npm run build
+      displayName: 'Build React App'
+
+- stage: Deploy
+  jobs:
+  - job: Deploy
+    displayName: 'Deploy to AKS'
+    steps:
+    - download: current
+      artifact: drop
+    - task: AzureRmWebAppDeployment@4
+      inputs:
+        azureSubscription: '<Your Azure Service Connection Name>'
+        appType: 'webAppContainer'
+        WebAppName: '<Your AKS Web App Name>'
+        DockerNamespace: '<Your Docker Namespace>'
+        DockerRepository: '<Your Docker Repository>'
+        DockerImageTag: '$(Build.BuildId)'
+        StartupCommand: 'java -jar /path/to/your/java/app.jar'
+        UseWebDeploy: false
+
+- stage: Release
+  jobs:
+  - deployment: Release
+    displayName: 'Release to AKS'
+    pool:
+      vmImage: 'ubuntu-latest'
+    environment: '<Your AKS Environment Name>'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+          - script: |
+              # Use kubectl to apply your Kubernetes manifests
+              kubectl apply -f k8s-manifests/
+            displayName: 'Deploy to AKS'
